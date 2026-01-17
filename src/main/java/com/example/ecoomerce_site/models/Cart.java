@@ -1,5 +1,6 @@
 package com.example.ecoomerce_site.models;
 
+import com.example.ecoomerce_site.users.User;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import jakarta.persistence.*;
 import lombok.*;

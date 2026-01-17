@@ -1,15 +1,12 @@
 package com.example.ecoomerce_site.services;
 
-import com.example.ecoomerce_site.models.Cart;
-import com.example.ecoomerce_site.models.CartItem;
-import com.example.ecoomerce_site.models.CartStatus;
-import com.example.ecoomerce_site.models.Product;
+import com.example.ecoomerce_site.models.*;
 import com.example.ecoomerce_site.repositories.CartRepository;
 import com.example.ecoomerce_site.repositories.ProductRepository;
+import com.example.ecoomerce_site.users.User;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
-import java.util.List;
 import java.util.Optional;
 
 @Service
@@ -18,122 +15,100 @@ public class CartService {
     private final CartRepository cartRepository;
     private final ProductRepository productRepository;
 
-    public CartService(CartRepository cartRepository,
-                       ProductRepository productRepository) {
+    public CartService(
+            CartRepository cartRepository,
+            ProductRepository productRepository
+    ) {
         this.cartRepository = cartRepository;
         this.productRepository = productRepository;
     }
 
-    /* ---------------- CART CREATION ---------------- */
+    /* ================= CART ================= */
 
-    public Cart getOrCreateCart(Integer cartId) {
-        if (cartId == null) {
-            return createCart();
+    public Cart getOrCreateCart(User user) {
+        if (user == null) {
+            throw new RuntimeException("User not authenticated");
         }
 
-        return cartRepository.findById(cartId)
-                .orElseThrow(() -> new RuntimeException("Cart not found"));
+        return cartRepository
+                .findByUserAndStatus(user, CartStatus.ACTIVE)
+                .orElseGet(() -> {
+                    Cart cart = new Cart();
+                    cart.setUser(user);
+                    cart.setStatus(CartStatus.ACTIVE);
+                    cart.setItems(new ArrayList<>());
+                    return cartRepository.save(cart);
+                });
     }
 
-    public Cart createCart() {
-        Cart cart = new Cart();
-        cart.setStatus(CartStatus.ACTIVE);
-        cart.setItems(new ArrayList<>());
-        return cartRepository.save(cart);
-    }
+    /* ================= ADD ITEM ================= */
 
-    /* ---------------- ADD ITEM ---------------- */
+    public Cart addCartItem(User user, Integer productId, Integer quantity) {
 
-    public Cart addCartItem(Integer cartId, Integer productId, Integer quantity) {
-
-        if (quantity <= 0) {
+        if (quantity == null || quantity <= 0) {
             throw new RuntimeException("Quantity must be greater than 0");
         }
 
-        Cart cart = getOrCreateCart(cartId);
+        Cart cart = getOrCreateCart(user);
 
         Product product = productRepository.findById(productId)
-                .orElseThrow(() -> new RuntimeException("Product does not exist"));
+                .orElseThrow(() -> new RuntimeException("Product not found"));
 
         Optional<CartItem> existingItem = cart.getItems()
                 .stream()
-                .filter(item -> item.getProduct().getProductId().equals(productId))
+                .filter(i -> i.getProduct().getProductId().equals(productId))
                 .findFirst();
 
         if (existingItem.isPresent()) {
             CartItem item = existingItem.get();
             item.setQuantity(item.getQuantity() + quantity);
         } else {
-            CartItem newItem = new CartItem(cart, product, quantity);
-            cart.getItems().add(newItem);
+            cart.getItems().add(new CartItem(cart, product, quantity));
         }
 
         return cartRepository.save(cart);
     }
 
-    /* ---------------- UPDATE QUANTITY ---------------- */
+    /* ================= UPDATE QUANTITY ================= */
 
-    public Cart updateItemQuantity(Integer cartId, Integer productId, Integer quantity) {
+    public Cart updateItemQuantity(User user, Integer productId, Integer quantity) {
 
-        Cart cart = getOrCreateCart(cartId);
+        Cart cart = getOrCreateCart(user);
 
-        Optional<CartItem> itemOpt = cart.getItems()
+        CartItem item = cart.getItems()
                 .stream()
-                .filter(item -> item.getProduct().getProductId().equals(productId))
-                .findFirst();
+                .filter(i -> i.getProduct().getProductId().equals(productId))
+                .findFirst()
+                .orElseThrow(() -> new RuntimeException("Product not in cart"));
 
-        if (itemOpt.isEmpty()) {
-            throw new RuntimeException("Product not in cart");
-        }
-
-        if (quantity <= 0) {
-            cart.getItems().remove(itemOpt.get());
+        if (quantity == null || quantity <= 0) {
+            cart.getItems().remove(item);
         } else {
-            itemOpt.get().setQuantity(quantity);
+            item.setQuantity(quantity);
         }
 
         return cartRepository.save(cart);
     }
 
-    /* ---------------- REMOVE ITEM ---------------- */
+    /* ================= REMOVE ITEM ================= */
 
-    public Cart removeItem(Integer cartId, Integer productId) {
+    public Cart removeItem(User user, Integer productId) {
 
-        Cart cart = getOrCreateCart(cartId);
+        Cart cart = getOrCreateCart(user);
 
         cart.getItems().removeIf(
-                item -> item.getProduct().getProductId().equals(productId)
+                i -> i.getProduct().getProductId().equals(productId)
         );
 
         return cartRepository.save(cart);
     }
 
-    /* ---------------- CLEAR CART ---------------- */
+    /* ================= CLEAR CART ================= */
 
-    public Cart clearCart(Integer cartId) {
+    public Cart clearCart(User user) {
 
-        Cart cart = getOrCreateCart(cartId);
+        Cart cart = getOrCreateCart(user);
         cart.getItems().clear();
         return cartRepository.save(cart);
-    }
-
-    /* ---------------- CHECKOUT ---------------- */
-
-    public Cart checkout(Integer cartId) {
-
-        Cart cart = getOrCreateCart(cartId);
-
-        if (cart.getItems().isEmpty()) {
-            throw new RuntimeException("Cannot checkout empty cart");
-        }
-
-        cart.setStatus(CartStatus.CHECKED_OUT);
-        return cartRepository.save(cart);
-    }
-
-    /* ================= NEW: VIEW ALL CARTS ================= */
-
-    public List<Cart> getAllCarts() {
-        return cartRepository.findAll();
     }
 }

@@ -1,88 +1,73 @@
 package com.example.ecoomerce_site.controllers;
 
 import com.example.ecoomerce_site.services.CartService;
+import com.example.ecoomerce_site.users.User;
+import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
 @RequestMapping("/v1/cart")
+@RequiredArgsConstructor
 public class CartController {
 
     private final CartService cartService;
 
-    public CartController(CartService cartService) {
-        this.cartService = cartService;
-    }
+    /* ================= GET CART ================= */
 
-    // POST /v1/cart
-    @PostMapping
-    public ResponseEntity<?> createCart() {
-        return ResponseEntity
-                .status(HttpStatus.CREATED)
-                .body(cartService.createCart());
-    }
-
-    // GET /v1/cart?cartId=1
     @GetMapping
-    public ResponseEntity<?> getOrCreateCart(
-            @RequestParam(required = false) Integer cartId
+    public ResponseEntity<?> getCart(
+            @AuthenticationPrincipal User user
     ) {
-        return ResponseEntity.ok(cartService.getOrCreateCart(cartId));
+        return ResponseEntity.ok(cartService.getOrCreateCart(user));
     }
 
-    // POST /v1/cart/items
+    /* ================= ADD ITEM ================= */
+
     @PostMapping("/items")
     public ResponseEntity<?> addCartItem(
-            @RequestParam Integer cartId,
+            @AuthenticationPrincipal User user,
             @RequestParam Integer productId,
             @RequestParam Integer quantity
     ) {
         return ResponseEntity
                 .status(HttpStatus.CREATED)
-                .body(cartService.addCartItem(cartId, productId, quantity));
+                .body(cartService.addCartItem(user, productId, quantity));
     }
 
-    // PUT /v1/cart/items
+    /* ================= UPDATE ================= */
+
     @PutMapping("/items")
     public ResponseEntity<?> updateItemQuantity(
-            @RequestParam Integer cartId,
+            @AuthenticationPrincipal User user,
             @RequestParam Integer productId,
             @RequestParam Integer quantity
     ) {
         return ResponseEntity.ok(
-                cartService.updateItemQuantity(cartId, productId, quantity)
+                cartService.updateItemQuantity(user, productId, quantity)
         );
     }
 
-    // DELETE /v1/cart/{cartId}/items
-    @DeleteMapping("/{cartId}/items")
+    /* ================= REMOVE ================= */
+
+    @DeleteMapping("/items")
     public ResponseEntity<?> removeItem(
-            @PathVariable Integer cartId,
+            @AuthenticationPrincipal User user,
             @RequestParam Integer productId
     ) {
-        cartService.removeItem(cartId, productId);
-        return ResponseEntity.noContent().build();
+        return ResponseEntity.ok(
+                cartService.removeItem(user, productId)
+        );
     }
 
-    // DELETE /v1/cart/{cartId}/clear
-    @DeleteMapping("/{cartId}/clear")
-    public ResponseEntity<?> clearCart(@PathVariable Integer cartId) {
-        cartService.clearCart(cartId);
-        return ResponseEntity.noContent().build();
-    }
+    /* ================= CLEAR ================= */
 
-    // POST /v1/cart/{cartId}/checkout
-    @PostMapping("/{cartId}/checkout")
-    public ResponseEntity<?> checkout(@PathVariable Integer cartId) {
-        return ResponseEntity.ok(cartService.checkout(cartId));
-    }
-
-    /* ================= NEW ================= */
-
-    // GET /v1/cart/all
-    @GetMapping("/all")
-    public ResponseEntity<?> getAllCarts() {
-        return ResponseEntity.ok(cartService.getAllCarts());
+    @DeleteMapping("/clear")
+    public ResponseEntity<?> clearCart(
+            @AuthenticationPrincipal User user
+    ) {
+        return ResponseEntity.ok(cartService.clearCart(user));
     }
 }

@@ -48,7 +48,6 @@ public class ProductService {
        Product productToUpdate = productRepository.findById(id).orElseThrow(()->new RuntimeException("No product with id. fail update"));
         Category catToFind = categoryRepository.findById(categoryId).orElseThrow(()->new RuntimeException("Invalid categoryId"));
 
-
         productToUpdate.setCategory(catToFind);
         productToUpdate.setName(name);
         productToUpdate.setPrice(price);
@@ -74,5 +73,9 @@ public void deleteProduct(Integer id) {
         }
         productToDecrease.setQuantity(oldQuantity-quantity);
         return productRepository.save(productToDecrease);
+    }
+
+    public List<Product> getProductByName(String name){
+        return productRepository.findByNameContainingIgnoreCase(name);
     }
 }

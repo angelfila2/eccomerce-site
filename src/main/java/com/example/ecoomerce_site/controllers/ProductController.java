@@ -9,6 +9,8 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.math.BigDecimal;
+import java.util.List;
+
 @RestController
 @RequestMapping("/v1/products")
 public class ProductController {
@@ -90,4 +92,15 @@ public class ProductController {
             return ResponseEntity.badRequest().body(e.getMessage());
         }
     }
+
+    @GetMapping("/search")
+    public ResponseEntity<List<Product>> searchProducts(
+            @RequestParam String q
+    ) {
+        return ResponseEntity.ok(
+                productService.getProductByName(q)
+        );
+    }
+
+
 }

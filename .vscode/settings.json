@@ -1,0 +1,51 @@
+{
+  "python.defaultInterpreterPath": "${workspaceFolder}/backend/.venv/Scripts/python.exe",
+  "workbench.colorTheme": "One Dark Pro",
+  "workbench.iconTheme": "material-icon-theme",
+  "editor.fontSize": 16,
+  "editor.lineHeight": 26,
+  "editor.cursorStyle": "line",
+  "editor.cursorBlinking": "smooth",
+  "editor.cursorWidth": 3,
+  "editor.renderLineHighlight": "all",
+  "editor.bracketPairColorization.enabled": true,
+  "editor.guides.bracketPairs": true,
+  "editor.minimap.enabled": false,
+  "workbench.colorCustomizations": {
+    "editor.background": "#1B1E24",
+    "editor.foreground": "#F2F3F5",
+    "sideBar.background": "#17191F",
+    "activityBar.background": "#121419",
+    "terminal.background": "#17191F",
+    "tab.activeBackground": "#23272F",
+    "tab.activeForeground": "#FFFFFF",
+    "tab.inactiveForeground": "#AAB2C0",
+    "editorLineNumber.foreground": "#8993A4",
+    "editorLineNumber.activeForeground": "#FFFFFF",
+    "editorCursor.foreground": "#FFD166",
+    "editor.lineHighlightBackground": "#292F39",
+    "editor.selectionBackground": "#315F8F",
+    "editor.selectionHighlightBackground": "#875CAD99",
+    "editor.findMatchBackground": "#B85E16",
+    "editor.findMatchBorder": "#FFD166"
+  },
+  "editor.tokenColorCustomizations": {
+    "[One Dark Pro]": {
+      "comments": "#A0A8B7",
+      "strings": "#D7F171",
+      "numbers": "#FFB86C",
+      "keywords": "#FF79C6",
+      "functions": "#66D9EF",
+      "types": "#FFD166",
+      "variables": "#F8F8F2"
+    }
+  },
+  "[python]": {
+    "editor.defaultFormatter": "charliermarsh.ruff",
+    "editor.formatOnSave": true,
+    "editor.codeActionsOnSave": {
+      "source.fixAll.ruff": "never",
+      "source.organizeImports.ruff": "never"
+    }
+  }
+}

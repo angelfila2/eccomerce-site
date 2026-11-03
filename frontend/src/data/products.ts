@@ -13,7 +13,7 @@ export const products: Product[] = [
     description: 'Breathable European linen with a relaxed texture that gets softer over time.',
     details: ['100% European flax', 'Stone washed', '130 × 180 cm'],
     price: 94, inventory: 22, featured: true, accent: '#9c765f',
-    imageUrl: 'https://images.unsplash.com/photo-1583845112203-454c2254ed87?auto=format&fit=crop&w=1200&q=85',
+    imageUrl: 'https://images.unsplash.com/photo-1602810440890-82b4eb233d0b?auto=format&fit=crop&w=1200&q=85',
   },
   {
     id: 'p_003', slug: 'field-tote', name: 'Field Tote', category: 'Carry',

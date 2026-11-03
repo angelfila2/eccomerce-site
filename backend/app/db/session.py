@@ -1,14 +1,11 @@
-"""Database seam.
+"""Synchronous SQLAlchemy engine and request-scoped session dependency.
 
-TODO: Create a synchronous SQLAlchemy 2 engine and request-scoped Session dependency.
-Start synchronous. Move to async only if load measurements demonstrate a benefit.
-
-The eventual interface should be small:
+Keep the database interface small:
 
     def get_session() -> Iterator[Session]
 
-Routers should pass the session to module use cases. A use case owns its transaction;
-repository helpers must not commit independently.
+Routers pass the session to module use cases. A use case owns its transaction;
+repository helpers do not commit independently.
 """
 
 from collections.abc import Iterator

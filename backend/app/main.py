@@ -19,7 +19,7 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
 app = FastAPI(
     title="Pawchase Commerce API",
     version="0.1.0",
-    description="Contract-first FastAPI skeleton. Authentication is intentionally deferred.",
+    description="Pawchase commerce API. Authentication is intentionally deferred.",
     lifespan=lifespan,
 )
 app.add_middleware(

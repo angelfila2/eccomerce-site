@@ -1,21 +1,24 @@
 from __future__ import annotations
 
+from datetime import datetime
 from decimal import Decimal
 from uuid import UUID, uuid4
 
 from sqlalchemy import (
-    Boolean,
-    ForeignKey,
-    Integer,
     JSON,
+    Boolean,
+    DateTime,
+    ForeignKey,
     Numeric,
     String,
     Text,
     Uuid,
+    func,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
+from app.inventory.models import Inventory
 
 
 class Category(Base):
@@ -42,6 +45,15 @@ class Category(Base):
 
     products: Mapped[list[Product]] = relationship(
         back_populates="category",
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        nullable=False,
+    )
+
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False, onupdate=func.now()
     )
 
 
@@ -82,12 +94,6 @@ class Product(Base):
         nullable=False,
     )
 
-    inventory: Mapped[int] = mapped_column(
-        Integer,
-        default=0,
-        nullable=False,
-    )
-
     image_url: Mapped[str] = mapped_column(
         String(500),
         nullable=False,
@@ -112,4 +118,24 @@ class Product(Base):
 
     category: Mapped[Category] = relationship(
         back_populates="products",
+    )
+
+    inventory_record: Mapped[Inventory | None] = relationship(
+        back_populates="product",
+        uselist=False,
+    )
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        nullable=False,
+    )
+
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False, onupdate=func.now()
+    )
+    currency: Mapped[str] = mapped_column(
+        String(3),
+        default="SGD",
+        nullable=False,
     )

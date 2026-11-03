@@ -29,6 +29,9 @@ export const httpCommerceGateway: CommerceGateway = {
   createOrder(lines: CartLine[], checkout: CheckoutInput) {
     return request<OrderReceipt>('/orders', {
       method: 'POST',
+      headers: {
+        'Idempotency-Key': crypto.randomUUID(),
+      },
       body: JSON.stringify({
         lines: lines.map(({ product, quantity }) => ({ productId: product.id, quantity })),
         checkout,

@@ -1,4 +1,4 @@
-import { Menu, Search, ShoppingBag, X } from 'lucide-react'
+import { Menu, PawPrint, Search, ShoppingBag, X } from 'lucide-react'
 import { useState } from 'react'
 import { Link, NavLink, Outlet, useNavigate } from 'react-router-dom'
 import { useCart } from '../modules/cart/cart-store'
@@ -23,7 +23,7 @@ export function StoreLayout() {
         <button className="mobile-menu-button" onClick={() => setMenuOpen((value) => !value)} aria-label="Toggle menu">
           {menuOpen ? <X /> : <Menu />}
         </button>
-        <Link className="brand" to="/"><img src="/pawchase-mark.png" alt="" /><span className="brand-name">PAWCHASE</span><sup>®</sup></Link>
+        <Link className="brand" to="/"><img src="/pawchase-mark.png" alt="" /><span className="brand-name">PAWCHASE</span><PawPrint className="brand-paw" aria-hidden="true" /></Link>
         <nav className={menuOpen ? 'main-nav open' : 'main-nav'} onClick={() => setMenuOpen(false)}>
           <NavLink to="/">Shop</NavLink>
           <NavLink to="/?category=Living">Living</NavLink>

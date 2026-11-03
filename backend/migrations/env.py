@@ -4,9 +4,10 @@ from alembic import context
 from sqlalchemy import engine_from_config, pool
 
 import app.catalog.models  # noqa: F401
+import app.inventory.models  # noqa: F401
+import app.orders.models  # noqa: F401
 from app.core.config import settings
 from app.db.base import Base
-
 
 config = context.config
 

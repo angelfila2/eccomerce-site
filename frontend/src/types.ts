@@ -14,6 +14,23 @@ export interface Product {
   featured?: boolean
 }
 
+export interface RecommendationItem {
+  product: Product
+  score: number
+  reason: string
+}
+
+export interface RecommendationResponse {
+  items: RecommendationItem[]
+  strategy: string
+  modelVersion: string
+}
+
+export interface RecommendationContext {
+  seedProductIds: string[]
+  limit?: number
+}
+
 export interface CartLine {
   product: Product
   quantity: number

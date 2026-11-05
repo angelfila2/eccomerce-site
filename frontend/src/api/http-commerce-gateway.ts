@@ -1,4 +1,4 @@
-import type { CartLine, CheckoutInput, OrderReceipt, Product } from '../types'
+import type { CartLine, CheckoutInput, OrderReceipt, Product, RecommendationContext, RecommendationResponse } from '../types'
 import type { CommerceGateway, ProductFilters } from './commerce-gateway'
 
 const baseUrl = import.meta.env.VITE_API_URL ?? 'http://localhost:8000/api/v1'
@@ -25,6 +25,11 @@ export const httpCommerceGateway: CommerceGateway = {
       if (error instanceof Error && error.message.includes('(404)')) return null
       throw error
     })
+  },
+  getRecommendations({ seedProductIds, limit = 4 }: RecommendationContext) {
+    const params = new URLSearchParams({ limit: String(limit) })
+    seedProductIds.forEach((productId) => params.append('seed_product_ids', productId))
+    return request<RecommendationResponse>(`/recommendations?${params}`)
   },
   createOrder(lines: CartLine[], checkout: CheckoutInput) {
     return request<OrderReceipt>('/orders', {

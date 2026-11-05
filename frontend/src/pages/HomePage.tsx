@@ -4,11 +4,15 @@ import { useSearchParams } from 'react-router-dom'
 import { commerceGateway } from '../api'
 import { PageLoader } from '../components/PageLoader'
 import { ProductCard } from '../components/ProductCard'
+import { RecommendationSection } from '../components/RecommendationSection'
+import { getRecentProductIds } from '../lib/recent-products'
+import { useCart } from '../modules/cart/cart-store'
 import type { Product } from '../types'
 
 const categories = ['All', 'Living', 'Workspace', 'Carry', 'Wellness']
 
 export function HomePage() {
+  const { lines } = useCart()
   const [params, setParams] = useSearchParams()
   const category = params.get('category') ?? 'All'
   const search = params.get('search') ?? ''
@@ -26,6 +30,10 @@ export function HomePage() {
   const title = useMemo(() => search ? `Results for “${search}”` : category === 'All' ? 'The everyday collection' : category, [category, search])
   const loading = result.key !== queryKey
   const products = result.products
+  const recommendationSeeds = useMemo(() => Array.from(new Set([
+    ...lines.map((line) => line.product.id),
+    ...getRecentProductIds(),
+  ])).slice(0, 8), [lines])
 
   return (
     <>
@@ -35,6 +43,7 @@ export function HomePage() {
           <div className="hero-copy"><p className="eyebrow">Edition 01 · 2026</p><h1>Live with<br /><em>intention.</em></h1><p>Useful, enduring objects chosen to bring clarity to the everyday.</p><a href="#collection">Discover the collection <ArrowRight size={18} /></a></div>
         </section>
       )}
+      {!search && category === 'All' && <RecommendationSection seedProductIds={recommendationSeeds} />}
       <section className="catalog-section" id="collection">
         <div className="section-heading"><div><p className="eyebrow">Curated essentials</p><h2>{title}</h2></div><p>{products.length} pieces</p></div>
         <div className="category-tabs" aria-label="Product categories">

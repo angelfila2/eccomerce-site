@@ -5,6 +5,7 @@ import { commerceGateway } from '../api'
 import { PageLoader } from '../components/PageLoader'
 import { QuantityControl } from '../components/QuantityControl'
 import { formatMoney } from '../lib/money'
+import { rememberProduct } from '../lib/recent-products'
 import { useCart } from '../modules/cart/cart-store'
 import type { Product } from '../types'
 
@@ -16,6 +17,9 @@ export function ProductPage() {
   const { add } = useCart()
 
   useEffect(() => { commerceGateway.getProduct(slug).then(setProduct) }, [slug])
+  useEffect(() => {
+    if (product) rememberProduct(product.id)
+  }, [product])
   if (product === undefined) return <PageLoader />
   if (product === null) return <div className="empty-state page-empty"><h1>Product not found</h1><Link className="button" to="/">Return to shop</Link></div>
 

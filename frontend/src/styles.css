@@ -226,3 +226,5 @@ h1, h2, blockquote { font-family: 'DM Serif Display', serif; font-weight: 400; }
   .form-grid { grid-template-columns:1fr; }
   .field.span { grid-column:auto; }
 }
+/* Keep unfinished backend features visibly distinct from the local demo. */
+.demo-notice { background: #171717; color: #fff; padding: .65rem 1rem; text-align: center; font-size: .8rem; line-height: 1.5; }

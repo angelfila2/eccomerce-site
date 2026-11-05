@@ -1,0 +1,501 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><title>Backend function reference</title>
+<style>body{font:15px system-ui;margin:32px;color:#222}table{border-collapse:collapse;width:100%}th,td{border:1px solid #ccc;text-align:left;padding:14px;vertical-align:top}th{background:#eee}td:first-child{width:210px}small{display:block;margin-top:8px;color:#666}pre{margin:0;white-space:pre-wrap;overflow-wrap:anywhere;font-size:13px;line-height:1.6}h1{font-size:24px}</style>
+<h1>Backend functions — python-ml</h1><p>Current BE implementation. Comments explain the important steps. ML exercises are deferred. Imports and shared types live in each source module.</p><table><thead><tr><th>Function</th><th>Code with comments</th></tr></thead><tbody><tr><td><strong>public_user</strong><small>accounts/handlers.py</small></td><td><pre><code>def public_user(user: User) -&gt; dict:
+    return {&quot;id&quot;: str(user.id), &quot;email&quot;: user.email, &quot;name&quot;: user.name}</code></pre></td></tr><tr><td><strong>jwt_secret</strong><small>accounts/handlers.py</small></td><td><pre><code>def jwt_secret() -&gt; str:
+    secret = settings.jwt_secret
+    if not secret or len(secret.encode()) &lt; 32:
+        raise HTTPException(503, &quot;Authentication requires APP_JWT_SECRET of at least 32 bytes&quot;)
+    return secret</code></pre></td></tr><tr><td><strong>register</strong><small>accounts/handlers.py</small></td><td><pre><code>def register(session: Session, payload: dict) -&gt; dict:
+    validated = validate_registration(payload)
+    user = User(email=validated[&quot;email&quot;].strip().casefold(),
+                password_hash=hash_password(validated[&quot;password&quot;]), name=validated[&quot;name&quot;])
+    try:
+        session.add(user)
+        session.commit()  # Persist the user and generate its UUID before returning.
+    except IntegrityError as error:
+        session.rollback()
+        existing = get_user_by_email(session, user.email)
+        session.rollback()
+        if existing is not None:
+            raise HTTPException(409, &quot;Email already registered&quot;) from error
+        raise
+    except SQLAlchemyError:
+        session.rollback()
+        raise
+    return public_user(user)</code></pre></td></tr><tr><td><strong>login</strong><small>accounts/handlers.py</small></td><td><pre><code>def login(session: Session, payload: dict, redis_client=None) -&gt; dict:
+    validated = LoginInput.model_validate(payload)
+    email = str(validated.email).strip().casefold()
+    if redis_client is not None:
+        check_login_limit(redis_client, email)
+    user = get_user_by_email(session, email)
+    if user is None or not verify_password(validated.password, user.password_hash):
+        raise HTTPException(401, &quot;Invalid email or password&quot;, headers={&quot;WWW-Authenticate&quot;: &quot;Bearer&quot;})
+    token = issue_token(str(user.id), jwt_secret(), int(time.time()))
+    return {&quot;access_token&quot;: token, &quot;token_type&quot;: &quot;bearer&quot;}</code></pre></td></tr><tr><td><strong>bearer_token</strong><small>accounts/handlers.py</small></td><td><pre><code>def bearer_token(authorization: str) -&gt; str:
+    parts = authorization.split() if isinstance(authorization, str) else []
+    if len(parts) != 2 or parts[0].casefold() != &quot;bearer&quot;:
+        raise HTTPException(401, &quot;Invalid credentials&quot;, headers={&quot;WWW-Authenticate&quot;: &quot;Bearer&quot;})
+    return parts[1]</code></pre></td></tr><tr><td><strong>profile</strong><small>accounts/handlers.py</small></td><td><pre><code>def profile(session: Session, authorization: str, redis_client=None) -&gt; dict:
+    token = bearer_token(authorization)
+    secret = jwt_secret()
+    try:
+        user_id = UUID(decode_token(token, secret, int(time.time())))
+    except ValueError as error:
+        raise HTTPException(401, &quot;Invalid credentials&quot;, headers={&quot;WWW-Authenticate&quot;: &quot;Bearer&quot;}) from error
+    if redis_client is not None and is_revoked(redis_client, token):
+        raise HTTPException(401, &quot;Invalid credentials&quot;, headers={&quot;WWW-Authenticate&quot;: &quot;Bearer&quot;})
+    user = session.get(User, user_id)
+    if user is None:
+        raise HTTPException(401, &quot;Invalid credentials&quot;, headers={&quot;WWW-Authenticate&quot;: &quot;Bearer&quot;})
+    return public_user(user)</code></pre></td></tr><tr><td><strong>logout</strong><small>accounts/handlers.py</small></td><td><pre><code>def logout(session: Session, authorization: str, redis_client) -&gt; None:
+    profile(session, authorization, redis_client)
+    revoke_token(redis_client, bearer_token(authorization), jwt_secret())</code></pre></td></tr><tr><td><strong>current_user</strong><small>accounts/router.py</small></td><td><pre><code>def current_user(session: Database, authorization: Authorization = None, client=Depends(get_redis)):
+    return handlers.profile(session, authorization or &quot;&quot;, client)</code></pre></td></tr><tr><td><strong>optional_user</strong><small>accounts/router.py</small></td><td><pre><code>def optional_user(session: Database, authorization: Authorization = None, client=Depends(get_redis)):
+    return handlers.profile(session, authorization, client) if authorization is not None else None</code></pre></td></tr><tr><td><strong>register</strong><small>accounts/router.py</small></td><td><pre><code>def register(payload: RegistrationInput, session: Database):
+    return handlers.register(session, payload.model_dump())</code></pre></td></tr><tr><td><strong>login</strong><small>accounts/router.py</small></td><td><pre><code>def login(payload: LoginInput, session: Database, client=Depends(get_redis)):
+    return handlers.login(session, payload.model_dump(), client)</code></pre></td></tr><tr><td><strong>logout</strong><small>accounts/router.py</small></td><td><pre><code>def logout(session: Database, authorization: Authorization = None, client=Depends(get_redis)):
+    handlers.logout(session, authorization or &quot;&quot;, client)
+    return Response(status_code=204)</code></pre></td></tr><tr><td><strong>profile</strong><small>accounts/router.py</small></td><td><pre><code>def profile(user=Depends(current_user)):
+    return user</code></pre></td></tr><tr><td><strong>update_profile</strong><small>accounts/router.py</small></td><td><pre><code>def update_profile(payload: ProfileInput, session: Database, user=Depends(current_user)):
+    from uuid import UUID
+    from app.accounts.models import User
+    account = session.get(User, UUID(user[&quot;id&quot;]))
+    account.name = payload.name
+    try:
+        session.commit()
+    except Exception:
+        session.rollback()
+        raise
+    return handlers.public_user(account)</code></pre></td></tr><tr><td><strong>get_user_by_email</strong><small>accounts/repository.py</small></td><td><pre><code>def get_user_by_email(session, email: str):
+    normalized_email = email.strip().casefold()
+    statement = select(User).where(User.email == normalized_email)
+    user = session.scalar(statement)
+    return user</code></pre></td></tr><tr><td><strong>list_owned_orders</strong><small>accounts/orders.py</small></td><td><pre><code>def list_owned_orders(session: Session, user_id: str, limit: int = 50, offset: int = 0) -&gt; list[dict]:
+    if not 1 &lt;= limit &lt;= 100 or offset &lt; 0:
+        raise ValueError(&quot;Invalid pagination&quot;)
+    # Email matching never grants ownership of guest or another account&#x27;s orders.
+    orders = session.scalars(select(Order).where(Order.user_id == UUID(user_id))
+                             .order_by(Order.created_at.desc(), Order.id.desc()).limit(limit).offset(offset))
+    return [{&quot;id&quot;: str(order.id), &quot;total&quot;: str(order.total), &quot;createdAt&quot;: order.created_at,
+             &quot;status&quot;: order.status.value} for order in orders]</code></pre></td></tr><tr><td><strong>validate_registration</strong><small>accounts/schemas.py</small></td><td><pre><code>def validate_registration(data: dict) -&gt; dict:
+
+    validated_data = RegistrationInput.model_validate(data)
+    return validated_data.model_dump()</code></pre></td></tr><tr><td><strong>hash_password</strong><small>core/passwords.py</small></td><td><pre><code>def hash_password(password: str) -&gt; str:
+    password_hasher = PasswordHash.recommended()
+    passowrd_hash = password_hasher.hash(password)
+    return passowrd_hash</code></pre></td></tr><tr><td><strong>verify_password</strong><small>core/passwords.py</small></td><td><pre><code>def verify_password(password: str, encoded: str) -&gt; bool:
+    try:
+        password_hasher = PasswordHash.recommended()
+        return password_hasher.verify(password, encoded)
+    except UnknownHashError:
+        return False</code></pre></td></tr><tr><td><strong>issue_token</strong><small>core/tokens.py</small></td><td><pre><code>def issue_token(user_id: str, secret: str, now: int, ttl: int = 900) -&gt; str:
+    payload = {
+        &quot;sub&quot;: user_id,
+        &quot;iat&quot;: now,
+        &quot;exp&quot;: now + ttl,
+    }
+    token = jwt.encode(payload, secret, algorithm=&quot;HS256&quot;)
+    return token</code></pre></td></tr><tr><td><strong>decode_token</strong><small>core/tokens.py</small></td><td><pre><code>def decode_token(token: str, secret: str, now: int) -&gt; str:
+    try:
+        decoded = jwt.decode(
+            token,
+            secret,
+            algorithms=[&quot;HS256&quot;],
+            options={
+                &quot;require&quot;: [&quot;sub&quot;, &quot;iat&quot;, &quot;exp&quot;],
+                # Check time below with `now`, keeping boundary tests deterministic.
+                # These options do not disable signature verification.
+                &quot;verify_exp&quot;: False,
+                &quot;verify_iat&quot;: False,
+            },
+        )
+    except jwt.PyJWTError as error:
+        raise ValueError(&quot;Invalid token&quot;) from error
+
+    if not isinstance(decoded[&quot;sub&quot;], str) or not decoded[&quot;sub&quot;]:
+        raise ValueError(&quot;Invalid subject claim&quot;)
+    # bool is an int subclass in Python, but is not a valid timestamp here.
+    if type(decoded[&quot;iat&quot;]) is not int:
+        raise ValueError(&quot;Invalid iat claim&quot;)
+    if type(decoded[&quot;exp&quot;]) is not int:
+        raise ValueError(&quot;Invalid expiration claim&quot;)
+    if decoded[&quot;iat&quot;] &gt; now:
+        raise ValueError(&quot;Token issued in the future&quot;)
+    if now &gt;= decoded[&quot;exp&quot;]:
+        raise ValueError(&quot;Token has expired&quot;)
+    return decoded[&quot;sub&quot;]</code></pre></td></tr><tr><td><strong>create_redis_client</strong><small>core/redis_client.py</small></td><td><pre><code>def create_redis_client():
+    return Redis.from_url(settings.redis_url, decode_responses=True,
+                          socket_connect_timeout=1, socket_timeout=1,
+                          max_connections=20, health_check_interval=30)</code></pre></td></tr><tr><td><strong>get_redis</strong><small>core/redis_client.py</small></td><td><pre><code>def get_redis(request: Request):
+    # Created once in FastAPI lifespan, reused by all request handlers.
+    return request.app.state.redis</code></pre></td></tr><tr><td><strong>token_key</strong><small>core/redis_client.py</small></td><td><pre><code>def token_key(token: str) -&gt; str:
+    return &quot;auth:revoked:&quot; + sha256(token.encode()).hexdigest()</code></pre></td></tr><tr><td><strong>check_login_limit</strong><small>core/redis_client.py</small></td><td><pre><code>def check_login_limit(client, email: str) -&gt; None:
+    key = &quot;auth:login:&quot; + sha256(email.encode()).hexdigest()
+    try:
+        # Atomic increment + expiring window; expiry is set only on first attempt.
+        count = client.eval(&quot;local n=redis.call(&#x27;INCR&#x27;,KEYS[1]); &quot;
+                            &quot;if n==1 then redis.call(&#x27;EXPIRE&#x27;,KEYS[1],ARGV[1]) end; return n&quot;,
+                            1, key, 60)
+    except RedisError as error:
+        raise HTTPException(503, &quot;Authentication storage unavailable&quot;) from error
+    if count &gt; 20:
+        raise HTTPException(429, &quot;Too many login attempts&quot;, headers={&quot;Retry-After&quot;: &quot;60&quot;})</code></pre></td></tr><tr><td><strong>is_revoked</strong><small>core/redis_client.py</small></td><td><pre><code>def is_revoked(client, token: str) -&gt; bool:
+    try:
+        return bool(client.exists(token_key(token)))
+    except RedisError as error:
+        # Never silently bypass revocation when its backing store is unavailable.
+        raise HTTPException(503, &quot;Authentication storage unavailable&quot;) from error</code></pre></td></tr><tr><td><strong>revoke_token</strong><small>core/redis_client.py</small></td><td><pre><code>def revoke_token(client, token: str, secret: str) -&gt; None:
+    try:
+        payload = jwt.decode(token, secret, algorithms=[&quot;HS256&quot;])
+    except jwt.PyJWTError as error:
+        raise HTTPException(401, &quot;Invalid credentials&quot;) from error
+    ttl = max(1, payload[&quot;exp&quot;] - int(time()))
+    try:
+        client.setex(token_key(token), ttl, &quot;1&quot;)
+    except RedisError as error:
+        raise HTTPException(503, &quot;Authentication storage unavailable&quot;) from error</code></pre></td></tr><tr><td><strong>catalogue_version</strong><small>core/redis_client.py</small></td><td><pre><code>def catalogue_version(client) -&gt; str:
+    try:
+        return str(client.get(&quot;recommendations:catalogue-version&quot;) or &quot;0&quot;)
+    except RedisError:
+        return &quot;offline&quot;</code></pre></td></tr><tr><td><strong>invalidate_recommendations</strong><small>core/redis_client.py</small></td><td><pre><code>def invalidate_recommendations(client) -&gt; None:
+    try:
+        client.incr(&quot;recommendations:catalogue-version&quot;)
+    except RedisError:
+        # Serving also checks current stock, so an outage cannot advertise sold-out items.
+        pass</code></pre></td></tr><tr><td><strong>get_session</strong><small>db/session.py</small></td><td><pre><code>def get_session() -&gt; Iterator[Session]:
+    with SessionFactory() as session:
+        yield session</code></pre></td></tr><tr><td><strong>list_categories</strong><small>categories/router.py</small></td><td><pre><code>def list_categories(session: Annotated[Session, Depends(get_session)]) -&gt; list[dict[str, str]]:
+    statement = select(Category).order_by(Category.name, Category.id)
+    statement_result = session.scalars(statement).all()
+    final_result = []
+    for result in statement_result:
+        final_result.append({&quot;id&quot;: str(result.id), &quot;name&quot;: result.name, &quot;slug&quot;: result.slug})
+    return final_result</code></pre></td></tr><tr><td><strong>set_quantity</strong><small>cart/service.py</small></td><td><pre><code>def set_quantity(session: Session, user_id: str, product_id: str, quantity: int) -&gt; dict:
+    if type(quantity) is not int or not 0 &lt;= quantity &lt;= 100:
+        raise ValueError(&quot;Quantity must be between 0 and 100&quot;)
+    owner, item_id = UUID(user_id), UUID(product_id)
+    try:
+        # Lock the owner to serialize concurrent cart creation/updates per user.
+        if session.scalar(select(User).where(User.id == owner).with_for_update()) is None:
+            raise HTTPException(404, &quot;User not found&quot;)
+        product = session.get(Product, item_id)
+        if product is None:
+            raise HTTPException(404, &quot;Product not found&quot;)
+        inventory = session.scalar(select(Inventory).where(Inventory.product_id == item_id))
+        if quantity and (inventory is None or quantity &gt; inventory.quantity):
+            raise HTTPException(409, &quot;Requested quantity exceeds stock&quot;)
+        cart = session.scalar(select(Cart).where(Cart.user_id == owner))
+        if cart is None and quantity:
+            cart = Cart(user_id=owner)
+            session.add(cart)
+            session.flush()
+        line = session.scalar(select(CartItem).where(CartItem.cart_id == cart.id,
+                              CartItem.product_id == item_id)) if cart else None
+        if quantity == 0:
+            if line is not None:
+                session.delete(line)
+        elif line is None:
+            session.add(CartItem(cart_id=cart.id, product_id=item_id, quantity=quantity))
+        else:
+            line.quantity = quantity
+        session.commit()  # A cart update never decrements inventory.
+    except Exception:
+        session.rollback()
+        raise
+    return {&quot;product_id&quot;: product_id, &quot;quantity&quot;: quantity}</code></pre></td></tr><tr><td><strong>get_cart</strong><small>cart/service.py</small></td><td><pre><code>def get_cart(session: Session, user_id: str) -&gt; list[dict]:
+    statement = (select(CartItem).join(Cart).where(Cart.user_id == UUID(user_id))
+                 .options(selectinload(CartItem.product).selectinload(Product.category),
+                          selectinload(CartItem.product).selectinload(Product.inventory_record))
+                 .order_by(CartItem.id))
+    return [{&quot;product&quot;: _to_product_response(line.product).model_dump(mode=&quot;json&quot;),
+             &quot;quantity&quot;: line.quantity} for line in session.scalars(statement)]</code></pre></td></tr><tr><td><strong>read_cart</strong><small>cart/router.py</small></td><td><pre><code>def read_cart(session: Annotated[Session, Depends(get_session)], user=Depends(current_user)):
+    return get_cart(session, user[&quot;id&quot;])</code></pre></td></tr><tr><td><strong>update_item</strong><small>cart/router.py</small></td><td><pre><code>def update_item(product_id: UUID, payload: QuantityInput,
+                session: Annotated[Session, Depends(get_session)], user=Depends(current_user)):
+    return set_quantity(session, user[&quot;id&quot;], str(product_id), payload.quantity)</code></pre></td></tr><tr><td><strong>remove_item</strong><small>cart/router.py</small></td><td><pre><code>def remove_item(product_id: UUID, session: Annotated[Session, Depends(get_session)],
+                user=Depends(current_user)):
+    return set_quantity(session, user[&quot;id&quot;], str(product_id), 0)</code></pre></td></tr><tr><td><strong>_to_order_receipt</strong><small>orders/service.py</small></td><td><pre><code>def _to_order_receipt(order: Order) -&gt; OrderReceipt:
+    return OrderReceipt(id=order.id, createdAt=order.created_at, total=order.total,
+                        customerEmail=order.customer_email)</code></pre></td></tr><tr><td><strong>request_fingerprint</strong><small>orders/service.py</small></td><td><pre><code>def request_fingerprint(request: CreateOrderRequest, scope: str) -&gt; str:
+    payload = request.model_dump(mode=&quot;json&quot;)
+    payload[&quot;lines&quot;].sort(key=lambda line: line[&quot;productId&quot;])
+    payload[&quot;checkout&quot;][&quot;email&quot;] = payload[&quot;checkout&quot;][&quot;email&quot;].strip().casefold()
+    return sha256(json.dumps({&quot;scope&quot;: scope, &quot;request&quot;: payload}, sort_keys=True,
+                             separators=(&quot;,&quot;, &quot;:&quot;)).encode()).hexdigest()</code></pre></td></tr><tr><td><strong>replay_order</strong><small>orders/service.py</small></td><td><pre><code>def replay_order(order: Order, fingerprint: str, scope: str) -&gt; OrderReceipt:
+    if order.owner_scope != scope or order.request_fingerprint != fingerprint:
+        # Legacy orders with no fingerprint cannot establish a safe replay.
+        raise IdempotencyConflictError(&quot;Idempotency key already used for another checkout&quot;)
+    return _to_order_receipt(order)</code></pre></td></tr><tr><td><strong>create_order</strong><small>orders/service.py</small></td><td><pre><code>def create_order(session: Session, request: CreateOrderRequest, idempotency_key: str,
+                 user_id: str | None = None, anonymous_id: str | None = None) -&gt; OrderReceipt:
+    owner = UUID(user_id) if user_id else None
+    anonymous = UUID(anonymous_id) if anonymous_id else None
+    scope = f&quot;user:{owner}&quot; if owner else f&quot;guest:{anonymous or &#x27;legacy-direct-call&#x27;}&quot;
+    fingerprint = request_fingerprint(request, scope)
+    ids = [line.productId for line in request.lines]
+    if len(ids) != len(set(ids)):
+        raise DuplicateProductError(&quot;Each product may appear only once&quot;)
+    try:
+        existing = session.scalar(select(Order).where(Order.idempotency_key == idempotency_key))
+        if existing:
+            result = replay_order(existing, fingerprint, scope)
+            session.rollback()  # End the read-only retry transaction.
+            return result
+        rows = session.execute(select(Product, Inventory).join(Inventory, Inventory.product_id == Product.id)
+                               .where(Product.id.in_(ids)).order_by(Product.id).with_for_update(of=Inventory)
+                               .execution_options(populate_existing=True)).all()
+        # A matching retry may have waited on the first request&#x27;s inventory lock.
+        existing = session.scalar(select(Order).where(Order.idempotency_key == idempotency_key))
+        if existing:
+            result = replay_order(existing, fingerprint, scope)
+            session.rollback()
+            return result
+        products = {product.id: (product, stock) for product, stock in rows}
+        if len(products) != len(ids):
+            raise ProductNotFoundError(&quot;One or more products do not exist&quot;)
+        if any(products[line.productId][1].quantity &lt; line.quantity for line in request.lines):
+            raise InsufficientInventoryError(&quot;Not enough inventory&quot;)
+        subtotal = sum((products[line.productId][0].price * line.quantity for line in request.lines), Decimal(&quot;0.00&quot;))
+        shipping = Decimal(&quot;0.00&quot;) if subtotal &gt;= Decimal(&quot;150.00&quot;) else Decimal(&quot;12.00&quot;)
+        order = Order(status=OrderStatus.CONFIRMED, idempotency_key=idempotency_key,
+                      request_fingerprint=fingerprint, owner_scope=scope, user_id=owner, anonymous_id=anonymous,
+                      customer_email=str(request.checkout.email), customer_name=request.checkout.fullName,
+                      address=request.checkout.address, city=request.checkout.city,
+                      postal_code=request.checkout.postalCode, country=request.checkout.country,
+                      subtotal=subtotal, shipping=shipping, tax=Decimal(&quot;0&quot;), discount=Decimal(&quot;0&quot;),
+                      total=subtotal + shipping, currency=&quot;SGD&quot;)
+        session.add(order)
+        session.flush()  # Claim the unique idempotency key before changing stock.
+        for line in request.lines:
+            product, stock = products[line.productId]
+            # Conditional SQL decrement also guards against concurrent last-unit sales.
+            changed = session.execute(update(Inventory).where(Inventory.product_id == product.id,
+                                      Inventory.quantity &gt;= line.quantity)
+                                      .values(quantity=Inventory.quantity - line.quantity)
+                                      .execution_options(synchronize_session=&quot;fetch&quot;))
+            if changed.rowcount != 1:
+                raise InsufficientInventoryError(&quot;Not enough inventory&quot;)
+            order.lines.append(OrderLine(product_id=product.id, product_slug=product.slug,
+                               product_name=product.name, quantity=line.quantity, unit_price=product.price,
+                               line_total=product.price * line.quantity, tax=Decimal(&quot;0&quot;),
+                               discount=Decimal(&quot;0&quot;), currency=product.currency))
+            # Purchases are recorded only inside a successful checkout transaction.
+            session.add(Interaction(event_id=uuid5(NAMESPACE_URL, f&quot;purchase:{order.id}:{product.id}&quot;),
+                                    kind=&quot;purchase&quot;, product_id=product.id, user_id=owner,
+                                    anonymous_id=anonymous or uuid4()))
+        if owner:
+            cart_id = session.scalar(select(Cart.id).where(Cart.user_id == owner))
+            if cart_id:
+                session.execute(delete(CartItem).where(CartItem.cart_id == cart_id, CartItem.product_id.in_(ids)))
+        session.flush()
+        result = _to_order_receipt(order)
+        session.commit()  # Order, inventory, cart cleanup and purchase events are atomic.
+        return result
+    except IntegrityError as error:
+        session.rollback()
+        # A concurrent request may have claimed the same key while this one waited.
+        existing = session.scalar(select(Order).where(Order.idempotency_key == idempotency_key))
+        if existing is None:
+            session.rollback()
+            raise
+        try:
+            return replay_order(existing, fingerprint, scope)
+        finally:
+            session.rollback()
+    except Exception:
+        session.rollback()
+        raise</code></pre></td></tr><tr><td><strong>create_order</strong><small>orders/router.py</small></td><td><pre><code>def create_order(request: CreateOrderRequest, session: Annotated[Session, Depends(get_session)],
+                 idempotency_key: Annotated[str, Header(alias=&quot;Idempotency-Key&quot;, min_length=1, max_length=100)],
+                 anonymous_id: Annotated[UUID | None, Header(alias=&quot;X-Anonymous-ID&quot;)] = None,
+                 user=Depends(optional_user), client=Depends(get_redis)):
+    if user is None and anonymous_id is None:
+        raise HTTPException(422, &quot;Guest checkout requires X-Anonymous-ID&quot;)
+    try:
+        receipt = service.create_order(session, request, idempotency_key,
+                                       user[&quot;id&quot;] if user else None, str(anonymous_id) if anonymous_id else None)
+    except service.DuplicateProductError as error:
+        raise HTTPException(422, str(error)) from error
+    except service.ProductNotFoundError as error:
+        raise HTTPException(404, str(error)) from error
+    except (service.InsufficientInventoryError, service.IdempotencyConflictError) as error:
+        raise HTTPException(409, str(error)) from error
+    invalidate_recommendations(client)
+    return receipt</code></pre></td></tr><tr><td><strong>order_history</strong><small>orders/router.py</small></td><td><pre><code>def order_history(session: Annotated[Session, Depends(get_session)], user=Depends(current_user),
+                  limit: Annotated[int, Query(ge=1, le=100)] = 50,
+                  offset: Annotated[int, Query(ge=0)] = 0):
+    return list_owned_orders(session, user[&quot;id&quot;], limit, offset)</code></pre></td></tr><tr><td><strong>record_event</strong><small>interactions/service.py</small></td><td><pre><code>def record_event(session: Session, event: dict, user_id: str | None, anonymous_id: str) -&gt; dict:
+    parsed = EventInput.model_validate(event)
+    owner = UUID(user_id) if user_id else None
+    anonymous = UUID(anonymous_id)
+    def replay(existing):
+        if (existing.user_id, existing.anonymous_id, existing.kind, existing.product_id, existing.query) != (
+                owner, anonymous, parsed.kind, parsed.product_id, parsed.query):
+            raise HTTPException(409, &quot;Event ID already used&quot;)
+        return {&quot;event_id&quot;: str(parsed.event_id), &quot;accepted&quot;: True}
+    try:
+        existing = session.scalar(select(Interaction).where(Interaction.event_id == parsed.event_id))
+        if existing:
+            return replay(existing)
+        if parsed.product_id and session.get(Product, parsed.product_id) is None:
+            raise HTTPException(404, &quot;Product not found&quot;)
+        session.add(Interaction(event_id=parsed.event_id, kind=parsed.kind, product_id=parsed.product_id,
+                                user_id=owner, anonymous_id=anonymous, query=parsed.query))
+        session.commit()
+    except IntegrityError:
+        session.rollback()
+        existing = session.scalar(select(Interaction).where(Interaction.event_id == parsed.event_id))
+        if existing is None:
+            raise
+        return replay(existing)
+    except Exception:
+        session.rollback()
+        raise
+    return {&quot;event_id&quot;: str(parsed.event_id), &quot;accepted&quot;: True}</code></pre></td></tr><tr><td><strong>track_event</strong><small>interactions/router.py</small></td><td><pre><code>def track_event(payload: EventInput, session: Annotated[Session, Depends(get_session)],
+                anonymous_id: Annotated[UUID, Header(alias=&quot;X-Anonymous-ID&quot;)], user=Depends(optional_user)):
+    return record_event(session, payload.model_dump(), user[&quot;id&quot;] if user else None, str(anonymous_id))</code></pre></td></tr><tr><td><strong>get_product_by_slug</strong><small>catalog/service.py</small></td><td><pre><code>def get_product_by_slug(session: Session, slug: str) -&gt; ProductResponse | None:
+    statement = (
+        select(Product)
+        .where(Product.slug == slug)
+        .options(
+            selectinload(Product.category),
+            selectinload(Product.inventory_record),
+        )
+    )
+    product = session.scalar(statement)
+    if product is None:
+        return None
+    return _to_product_response(product)</code></pre></td></tr><tr><td><strong>_to_product_response</strong><small>catalog/service.py</small></td><td><pre><code>def _to_product_response(product: Product) -&gt; ProductResponse:
+    if product.inventory_record is None:
+        raise ValueError(f&quot;Product &#x27;{product.slug}&#x27; has no inventory record&quot;)
+    return ProductResponse(
+        id=product.id,
+        slug=product.slug,
+        name=product.name,
+        category=product.category.name,
+        description=product.description,
+        details=product.details,
+        price=product.price,
+        inventory=product.inventory_record.quantity,
+        imageUrl=product.image_url,
+        accent=product.accent,
+        featured=product.featured,
+    )</code></pre></td></tr><tr><td><strong>list_products</strong><small>catalog/service.py</small></td><td><pre><code>def list_products(
+    session: Session,
+    category: str | None = None,
+    search: str | None = None,
+    limit: int = 10,
+    offset: int = 0,
+) -&gt; list[ProductResponse]:
+    if not 1 &lt;= limit &lt;= 100 or offset &lt; 0:
+        raise ValueError(&quot;Invalid pagination&quot;)
+    if not category and not search:
+        from app.catalog.performance import paginated_catalog
+        return paginated_catalog(session, limit, offset)
+    statement = select(Product).options(
+        selectinload(Product.category),
+        selectinload(Product.inventory_record),
+    )
+    if category:
+        statement = statement.join(Product.category).where(Category.name == category)
+    if search:
+        statement = statement.where(
+            or_(
+                Product.name.ilike(f&quot;%{search}%&quot;),
+                Product.description.ilike(f&quot;%{search}%&quot;),
+            )
+        )
+    statement = statement.order_by(Product.name, Product.id).offset(offset).limit(limit)
+    products = session.scalars(statement).all()
+    responses: list[ProductResponse] = []
+
+    for product in products:
+        response = _to_product_response(product)
+        responses.append(response)
+
+    return responses</code></pre></td></tr><tr><td><strong>paginated_catalog</strong><small>catalog/performance.py</small></td><td><pre><code>def paginated_catalog(session: Session, limit: int, offset: int) -&gt; list:
+    if not 1 &lt;= limit &lt;= 100 or offset &lt; 0:
+        raise ValueError(&quot;Invalid pagination&quot;)
+    # Three bounded queries replace per-product category/inventory lookups.
+    rows = session.scalars(select(Product).options(selectinload(Product.category),
+                           selectinload(Product.inventory_record)).order_by(Product.name, Product.id)
+                           .limit(limit).offset(offset))
+    return [_to_product_response(product) for product in rows]</code></pre></td></tr><tr><td><strong>recommend_products</strong><small>recommendations/service.py</small></td><td><pre><code>def recommend_products(*, session: Session, seed_product_ids: list[UUID], limit: int,
+                       mode: str = &quot;personalized&quot;, user_id: str | None = None,
+                       redis_client=None) -&gt; RecommendationResponse:
+    if not 1 &lt;= limit &lt;= 100:
+        raise ValueError(&quot;Limit must be between 1 and 100&quot;)
+    products = session.scalars(select(Product).options(selectinload(Product.category),
+                              selectinload(Product.inventory_record)).order_by(Product.name, Product.id)).all()
+    available = {product.id: product for product in products
+                 if product.inventory_record and product.inventory_record.quantity &gt; 0}
+    seeds = set(seed_product_ids)
+    purchased = set()
+    if user_id:
+        owner = UUID(user_id)
+        history = session.scalars(select(Interaction.product_id).where(Interaction.user_id == owner,
+                    Interaction.product_id.is_not(None)).order_by(Interaction.created_at.desc()).limit(30)).all()
+        seeds.update(history)
+        purchased.update(session.scalars(select(OrderLine.product_id).join(Order)
+                         .where(Order.user_id == owner, Order.status == OrderStatus.CONFIRMED)))
+    seed_categories = {product.category_id for product in products if product.id in seeds}
+    counts = Counter()
+    if mode == &quot;frequently_bought&quot; and seed_product_ids:
+        baskets = session.scalars(select(OrderLine.order_id).join(Order).where(
+            OrderLine.product_id == seed_product_ids[0], Order.status == OrderStatus.CONFIRMED)).all()
+        if baskets:
+            # Count each companion once per completed order, never text similarity.
+            pairs = session.execute(select(OrderLine.order_id, OrderLine.product_id)
+                                    .where(OrderLine.order_id.in_(baskets)).distinct())
+            counts.update(product_id for _, product_id in pairs if product_id not in seeds)
+    candidates = [p for p in available.values() if p.id not in seeds and p.id not in purchased]
+    strategy = &quot;featured_fallback&quot;
+    reason = &quot;Featured catalogue selection; learning models are not trained yet&quot;
+    if mode == &quot;frequently_bought&quot;:
+        candidates = [p for p in candidates if counts[p.id] &gt; 0]
+        candidates.sort(key=lambda p: (-counts[p.id], p.name, str(p.id)))
+        strategy, reason = &quot;order_cooccurrence&quot;, &quot;Bought in the same completed orders&quot;
+    elif seed_categories and mode != &quot;trending&quot;:
+        candidates.sort(key=lambda p: (p.category_id not in seed_categories, not p.featured, p.name, str(p.id)))
+        strategy, reason = &quot;category_fallback&quot;, &quot;Matches a category you explored; ML fallback&quot;
+    else:
+        candidates.sort(key=lambda p: (not p.featured, p.name, str(p.id)))
+    # Current DB stock/category state forms part of the cache version. Serving
+    # never trusts cached availability after a checkout or external stock change.
+    signature = [(str(p.id), str(p.updated_at), p.inventory_record.quantity) for p in products if p.inventory_record]
+    generation = catalogue_version(redis_client) if redis_client is not None else &quot;uncached&quot;
+    key = &quot;recommendations:v1:&quot; + sha256(json.dumps([generation, mode, user_id, sorted(map(str, seeds)),
+                 sorted(map(str, purchased)), limit, signature, sorted((str(k), v) for k,v in counts.items())],
+                 sort_keys=True).encode()).hexdigest()
+    def compute():
+        return RecommendationResponse(items=[RecommendationItem(product=_to_product_response(p),
+                   score=1 / (index + 1), reason=reason) for index, p in enumerate(candidates[:limit])],
+                   strategy=strategy, modelVersion=&quot;baseline-serving-v1&quot;).model_dump(mode=&quot;json&quot;)
+    payload = cached_recommendations(redis_client, key, compute) if redis_client is not None else compute()
+    response = RecommendationResponse.model_validate(payload)
+    # Refresh product objects from authoritative rows even on a cache hit.
+    response.items = [item.model_copy(update={&quot;product&quot;: _to_product_response(available[item.product.id])})
+                      for item in response.items if item.product.id in available
+                      and item.product.id not in seeds and item.product.id not in purchased]
+    return response</code></pre></td></tr><tr><td><strong>cached_recommendations</strong><small>recommendations/cache.py</small></td><td><pre><code>def cached_recommendations(client, key: str, compute, ttl: int = 60):
+    if type(ttl) is not int or ttl &lt;= 0:
+        raise ValueError(&quot;TTL must be a positive integer&quot;)
+    try:
+        encoded = client.get(key)
+        if encoded is not None:
+            return json.loads(encoded)
+    except (RedisError, ValueError, TypeError, UnicodeDecodeError):
+        pass
+    result = compute()  # Model/database errors must propagate, unlike cache outages.
+    try:
+        client.setex(key, ttl, json.dumps(result))
+    except RedisError:
+        pass
+    return result</code></pre></td></tr><tr><td><strong>personalized</strong><small>recommendations/router.py</small></td><td><pre><code>def personalized(session: Database, seed_product_ids: Annotated[list[UUID] | None, Query()] = None,
+                 limit: Limit = 4, user=Depends(optional_user), client=Depends(get_redis)):
+    return recommend_products(session=session, seed_product_ids=seed_product_ids or [], limit=limit,
+                              user_id=user[&quot;id&quot;] if user else None, redis_client=client)</code></pre></td></tr><tr><td><strong>trending</strong><small>recommendations/router.py</small></td><td><pre><code>def trending(session: Database, limit: Limit = 4, client=Depends(get_redis)):
+    return recommend_products(session=session, seed_product_ids=[], limit=limit, mode=&quot;trending&quot;, redis_client=client)</code></pre></td></tr><tr><td><strong>product_recommendations</strong><small>recommendations/router.py</small></td><td><pre><code>def product_recommendations(session, product_id, limit, mode, client):
+    if session.get(Product, product_id) is None:
+        raise HTTPException(404, &quot;Product not found&quot;)
+    return recommend_products(session=session, seed_product_ids=[product_id], limit=limit, mode=mode, redis_client=client)</code></pre></td></tr><tr><td><strong>similar</strong><small>recommendations/router.py</small></td><td><pre><code>def similar(product_id: UUID, session: Database, limit: Limit = 4, client=Depends(get_redis)):
+    return product_recommendations(session, product_id, limit, &quot;similar&quot;, client)</code></pre></td></tr><tr><td><strong>frequently_bought</strong><small>recommendations/router.py</small></td><td><pre><code>def frequently_bought(product_id: UUID, session: Database, limit: Limit = 4, client=Depends(get_redis)):
+    return product_recommendations(session, product_id, limit, &quot;frequently_bought&quot;, client)</code></pre></td></tr><tr><td><strong>you_may_like</strong><small>recommendations/router.py</small></td><td><pre><code>def you_may_like(product_id: UUID, session: Database, limit: Limit = 4, client=Depends(get_redis)):
+    return product_recommendations(session, product_id, limit, &quot;you_may_like&quot;, client)</code></pre></td></tr></tbody></table></html>

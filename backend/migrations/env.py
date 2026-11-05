@@ -4,6 +4,8 @@ from alembic import context
 from sqlalchemy import engine_from_config, pool
 
 import app.catalog.models  # noqa: F401
+import app.accounts.models  # noqa: F401
+import app.interactions.models  # noqa: F401
 import app.inventory.models  # noqa: F401
 import app.orders.models  # noqa: F401
 from app.core.config import settings
@@ -37,6 +39,12 @@ def run_migrations_offline() -> None:
 
 
 def run_migrations_online() -> None:
+    # Tests and migration tooling can supply a disposable existing connection.
+    connection = config.attributes.get("connection")
+    if connection is not None:
+        configure_connection(connection)
+        return
+
     connectable = engine_from_config(
         config.get_section(
             config.config_ini_section,
@@ -47,13 +55,13 @@ def run_migrations_online() -> None:
     )
 
     with connectable.connect() as connection:
-        context.configure(
-            connection=connection,
-            target_metadata=target_metadata,
-        )
+        configure_connection(connection)
 
-        with context.begin_transaction():
-            context.run_migrations()
+
+def configure_connection(connection) -> None:
+    context.configure(connection=connection, target_metadata=target_metadata)
+    with context.begin_transaction():
+        context.run_migrations()
 
 
 if context.is_offline_mode():

@@ -3,10 +3,17 @@ import type { CommerceGateway, ProductFilters } from './commerce-gateway'
 
 const baseUrl = import.meta.env.VITE_API_URL ?? 'http://localhost:8000/api/v1'
 
+function anonymousId(): string {
+  const key = 'pawchase-anonymous-id'
+  let id = localStorage.getItem(key)
+  if (!id) { id = crypto.randomUUID(); localStorage.setItem(key, id) }
+  return id
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${baseUrl}${path}`, {
     ...init,
-    headers: { 'Content-Type': 'application/json', ...init?.headers },
+    headers: { 'Content-Type': 'application/json', 'X-Anonymous-ID': anonymousId(), ...init?.headers },
   })
   if (!response.ok) throw new Error(`Request failed (${response.status})`)
   return response.json() as Promise<T>

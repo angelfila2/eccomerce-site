@@ -23,8 +23,23 @@ def rank_candidates(
     product_categories: list[str],
     product_popularity_scores: list[float],
 ) -> list[RankedCandidate]:
-    """Rank products using semantic, category, and popularity signals."""
-    # TODO(recommendations-3):
+    """BE-013 ranking subtask (legacy recommendations-3); preserve the existing attempt.
+
+    Objective/context: Finish explainable session ranking before API integration.
+    Steps: normalize product vectors; compare against the existing interest mean;
+    exclude seeds; compute the documented category/popularity signals; sort with
+    deterministic UUID ties. Compare this earlier weighted scheme with ML-010 RRF
+    before extending to incompatible model scores. Do not average raw model scales.
+    Input: aligned IDs, vectors [P,D], categories and bounded popularity signals.
+    Output: descending RankedCandidate list, scores bounded to [0,1].
+    Hints: np.linalg.norm; zero-vector guards; dot product; set membership.
+    Edge cases: empty/invalid seeds, mismatched array lengths, zero vectors, ties.
+    Acceptance: keep the learner's existing mean-vector work; no seed candidates;
+    finite scores and deterministic ranking, plus BE-013 service stock filtering.
+    Test: python -m pytest tests/learning/test_backend.py::test_BE_013 -q
+    Add direct ranking tests for these subtask invariants when BE-013 becomes active.
+    Full task card: docs/learning/TASKS.md, BE-013. Do not solve for the learner.
+    """
     # 1. Average the vectors of products the user liked into one interest vector.
     interested_id_set = set(interested_product_ids)
     interested_product_indexes = []

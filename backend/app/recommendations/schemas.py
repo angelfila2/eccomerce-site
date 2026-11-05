@@ -18,5 +18,5 @@ class RecommendationResponse(BaseModel):
     strategy: str
     model_version: str = Field(alias="modelVersion")
 
-    # TODO(recommendations): Add a request ID when recommendation impressions
-    # are persisted so clicks can be attributed to this exact response.
+    # BE-011/013 extension: introduce a response correlation ID with attribution
+    # tests when impressions are persisted; preserve this client contract meanwhile.

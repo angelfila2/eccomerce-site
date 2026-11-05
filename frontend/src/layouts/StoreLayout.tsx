@@ -2,6 +2,7 @@ import { Menu, PawPrint, Search, ShoppingBag, X } from 'lucide-react'
 import { useState } from 'react'
 import { Link, NavLink, Outlet, useNavigate } from 'react-router-dom'
 import { useCart } from '../modules/cart/cart-store'
+import { isDemoMode } from '../api'
 
 export function StoreLayout() {
   const { itemCount } = useCart()
@@ -18,6 +19,7 @@ export function StoreLayout() {
 
   return (
     <div className="app-shell">
+      {isDemoMode && <div className="demo-notice" role="status">Learning demo · Sample products and simulated orders · No real payments</div>}
       <div className="announcement">Complimentary shipping on orders over $150</div>
       <header className="site-header">
         <button className="mobile-menu-button" onClick={() => setMenuOpen((value) => !value)} aria-label="Toggle menu">

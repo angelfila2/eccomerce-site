@@ -1,4 +1,13 @@
-# Accounts — final implementation phase
+# Accounts — learner-owned milestone 6
+
+The current roadmap supersedes the historical auth-last sequencing below.
+BE-002..004 cover validation/models/queries; BE-006..008 cover password hashing,
+expiring bearer JWTs and handlers. The scaffold does not implement authentication.
+Follow the full [task cards](../../../../docs/learning/TASKS.md) and
+[backend guide](../../../../BACKEND_LEARNING_GUIDE.md).
+
+The remaining notes are historical context for production alternatives, not the
+current exercise specification. Do not replace working code to support the demo.
 
 Authentication is intentionally not wired into the application.
 

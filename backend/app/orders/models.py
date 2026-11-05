@@ -42,6 +42,10 @@ class Order(Base):
         primary_key=True,
         default=uuid4,
     )
+    user_id: Mapped[UUID | None] = mapped_column(ForeignKey("users.id"), nullable=True, index=True)
+    anonymous_id: Mapped[UUID | None] = mapped_column(Uuid, nullable=True)
+    request_fingerprint: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    owner_scope: Mapped[str | None] = mapped_column(String(80), nullable=True)
     status: Mapped[OrderStatus] = mapped_column(
         SqlEnum(
             OrderStatus,

@@ -49,6 +49,11 @@ def list_products(
     offset: int = 0,
 ) -> list[ProductResponse]:
     """List products with optional category and search filters."""
+    if not 1 <= limit <= 100 or offset < 0:
+        raise ValueError("Invalid pagination")
+    if not category and not search:
+        from app.catalog.performance import paginated_catalog
+        return paginated_catalog(session, limit, offset)
     statement = select(Product).options(
         selectinload(Product.category),
         selectinload(Product.inventory_record),

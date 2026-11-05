@@ -10,6 +10,8 @@ class Settings(BaseSettings):
     api_prefix: str = "/api/v1"
     database_url: str = "postgresql+psycopg://postgres:postgres@localhost:5432/pawchase"
     cors_origins: list[str] = ["http://localhost:5173"]
+    jwt_secret: str | None = None
+    redis_url: str = "redis://localhost:6379/0"
 
 
 @lru_cache

@@ -1,4 +1,10 @@
-# Backend implementation plan
+# Historical backend implementation plan
+
+The current mentored plan is [LEARNING_ROADMAP.md](../LEARNING_ROADMAP.md), with
+full task cards in [TASKS.md](../docs/learning/TASKS.md). Follow that plan for new
+work. Authentication is now milestone 6, persisted carts are exercises, and real
+payments are out of scope. Old checkboxes below are historical notes, not verified
+learning progress. Existing implementations are preserved.
 
 Implement in this order. Use the next unchecked items as the daily roadmap and keep the
 application as one deployable modular monolith.
